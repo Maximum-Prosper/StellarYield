@@ -1,0 +1,42 @@
+# Difficulty labels
+- name: "difficulty: easy"
+  color: "0e8a16"
+  description: "Good for first-time contributors; limited scope, clear acceptance criteria"
+
+- name: "difficulty: medium"
+  color: "e4b400"
+  description: "Requires familiarity with the codebase; moderate complexity"
+
+- name: "difficulty: hard"
+  color: "b60205"
+  description: "Complex change; significant design or implementation effort required"
+
+# Area labels
+- name: "area: frontend"
+  color: "1d76db"
+  description: "Affects the React/Vite client (client/)"
+
+- name: "area: backend"
+  color: "0075ca"
+  description: "Affects the Node.js server (server/)"
+
+- name: "area: contracts"
+  color: "5319e7"
+  description: "Affects Soroban smart contracts (contracts/)"
+
+- name: "area: docs"
+  color: "d4c5f9"
+  description: "Documentation only"
+
+- name: "area: ci"
+  color: "f9d0c4"
+  description: "GitHub Actions workflows and CI configuration"
+
+# Type labels (keep existing ones intact — only add if not already present)
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers"
+
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention is needed"
