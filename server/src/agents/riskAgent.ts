@@ -13,6 +13,7 @@
  */
 
 import { calculateRiskScore } from "../utils/riskScoring";
+import { resilientFetch } from "./resilientFetch";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,34 +70,42 @@ ${news}
 Governance: ${governance}`;
 }
 
+const LLM_TIMEOUT_MS = 15_000;
+const LLM_MAX_RETRIES = 2;
+
 async function callLLM(systemPrompt: string, userPrompt: string): Promise<string> {
   if (!LLM_API_KEY) {
     throw new Error("No LLM API key configured (set GEMINI_API_KEY or OPENAI_API_KEY)");
   }
 
   if (LLM_PROVIDER === "openai") {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${LLM_API_KEY}`,
+    const res = await resilientFetch(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${LLM_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 500,
+        }),
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 500,
-      }),
-    });
+      "openai-risk-agent",
+      { timeoutMs: LLM_TIMEOUT_MS, maxRetries: LLM_MAX_RETRIES },
+    );
     const data = (await res.json()) as { choices: { message: { content: string } }[] };
     return data.choices[0].message.content;
   }
 
   // Default: Google Gemini
-  const res = await fetch(
+  const res = await resilientFetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${LLM_API_KEY}`,
     {
       method: "POST",
@@ -106,6 +115,8 @@ async function callLLM(systemPrompt: string, userPrompt: string): Promise<string
         generationConfig: { temperature: 0.3, maxOutputTokens: 500 },
       }),
     },
+    "gemini-risk-agent",
+    { timeoutMs: LLM_TIMEOUT_MS, maxRetries: LLM_MAX_RETRIES },
   );
   const data = (await res.json()) as {
     candidates: { content: { parts: { text: string }[] } }[];
