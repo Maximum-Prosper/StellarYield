@@ -7,5 +7,5 @@ module.exports = {
   transform: {
     '^.+\\.tsx?$': 'ts-jest',
   },
-  setupFiles: ['<rootDir>/src/__tests__/setup.ts'],
+  setupFiles: ['<rootDir>/src/setupTests.ts'],
 };

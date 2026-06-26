@@ -2,11 +2,11 @@
  * Google Sheets API Tests
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 describe("Google Sheets API", () => {
     beforeEach(() => {
-        vi.clearAllMocks();
+        jest.clearAllMocks();
     });
 
     it("should validate token exchange parameters", () => {
