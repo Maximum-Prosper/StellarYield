@@ -11,46 +11,22 @@ import {
 import { useWallet } from "../../context/useWallet";
 import { TrendingUp, TrendingDown, Loader2, DollarSign, BarChart3 } from "lucide-react";
 import { getApiBaseUrl } from "../../lib/api";
+import ApiErrorBanner from "../../components/ApiErrorBanner/ApiErrorBanner";
+import {
+  normalizePnLData,
+  hasNoData,
+  hasPartialData,
+  isSparseChartData,
+  type PnLData,
+} from "./pnlChartUtils";
 
-interface DailyPnLSnapshot {
-  date: string;
-  cumulativePnL: number;
-  portfolioValue: number;
-  sharePrice: number;
-}
-
-interface PnLData {
-  totalDeposited: number;
-  totalWithdrawn: number;
-  currentValue: number;
-  costBasis: number;
-  absolutePnL: number;
-  twrPercent: number;
-  dailySnapshots: DailyPnLSnapshot[];
-}
-
-const API_BASE = getApiBaseUrl();
-
-/**
- * Detects if PnL data is empty or insufficient for rendering.
- */
-function hasNoData(data: PnLData | null): boolean {
-  if (!data) return true;
-  // No deposits and no snapshots = completely empty
-  if (data.totalDeposited === 0 && data.dailySnapshots.length === 0) {
-    return true;
+const getApiBase = () => {
+  try {
+    return getApiBaseUrl();
+  } catch {
+    return "";
   }
-  return false;
-}
-
-/**
- * Detects if we have summary data but no chart data.
- */
-function hasPartialData(data: PnLData | null): boolean {
-  if (!data) return false;
-  // Has deposits but no daily snapshots
-  return data.totalDeposited > 0 && data.dailySnapshots.length === 0;
-}
+};
 
 /**
  * PnLChart — Visualizes a user's historical profit & loss with an area chart.
@@ -71,12 +47,13 @@ export default function PnLChart() {
 
     try {
       const res = await fetch(
-        `${API_BASE}/api/users/${encodeURIComponent(walletAddress)}/pnl`,
+        `${getApiBase()}/api/users/${encodeURIComponent(walletAddress)}/pnl`,
       );
       if (!res.ok) {
         throw new Error("Failed to fetch PnL data");
       }
-      const data: PnLData = await res.json();
+      const raw = await res.json();
+      const data: PnLData = normalizePnLData(raw);
       setPnlData(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch PnL data");
@@ -117,9 +94,8 @@ export default function PnLChart() {
 
   if (error) {
     return (
-      <div className="glass-panel p-8 text-center">
-        <p className="text-red-400 mb-2 font-semibold">Failed to Load PnL Data</p>
-        <p className="text-gray-400 text-sm">{error}</p>
+      <div className="glass-panel p-8">
+        <ApiErrorBanner message={error} onRetry={fetchPnL} />
       </div>
     );
   }
@@ -139,8 +115,10 @@ export default function PnLChart() {
 
   // Partial data state: has deposits but no chart data
   const showPartialDataWarning = hasPartialData(pnlData);
+  const data = pnlData;
+  if (!data) return null;
 
-  const isProfit = pnlData.absolutePnL >= 0;
+  const isProfit = data.absolutePnL >= 0;
   const pnlColor = isProfit ? "text-green-400" : "text-red-400";
   const chartColor = isProfit ? "#4ade80" : "#f87171";
   const chartGradient = isProfit
@@ -163,16 +141,16 @@ export default function PnLChart() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Deposited" value={`$${fmt(pnlData.totalDeposited)}`} />
-        <StatCard label="Total Withdrawn" value={`$${fmt(pnlData.totalWithdrawn)}`} />
+        <StatCard label="Total Deposited" value={`$${fmt(data.totalDeposited)}`} />
+        <StatCard label="Total Withdrawn" value={`$${fmt(data.totalWithdrawn)}`} />
         <StatCard
           label="Current Value"
-          value={`$${fmt(pnlData.currentValue)}`}
+          value={`$${fmt(data.currentValue)}`}
           highlight
         />
         <StatCard
           label="Absolute PnL"
-          value={`${isProfit ? "+" : ""}$${fmt(pnlData.absolutePnL)}`}
+          value={`${isProfit ? "+" : "-"}$${fmt(data.absolutePnL)}`}
           className={pnlColor}
         />
       </div>
@@ -181,16 +159,23 @@ export default function PnLChart() {
       <div className="flex items-center gap-3">
         <span className="text-gray-400 text-sm">Time-Weighted Return:</span>
         <span className={`text-lg font-bold ${pnlColor}`}>
-          {pnlData.twrPercent >= 0 ? "+" : ""}
-          {pnlData.twrPercent.toFixed(2)}%
+          {data.twrPercent >= 0 ? "+" : ""}
+          {data.twrPercent.toFixed(2)}%
         </span>
       </div>
 
       {/* PnL Chart */}
-      {pnlData.dailySnapshots.length > 0 ? (
+      {data.dailySnapshots.length > 0 ? (
+        <div className="space-y-2">
+          {isSparseChartData(data.dailySnapshots) && (
+            <p className="text-xs text-amber-400/80">
+              Limited history available — chart shows {data.dailySnapshots.length} data point
+              {data.dailySnapshots.length === 1 ? "" : "s"}.
+            </p>
+          )}
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={pnlData.dailySnapshots}>
+            <AreaChart data={data.dailySnapshots}>
               <defs>
                 <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#4ade80" stopOpacity={0.3} />
@@ -229,6 +214,7 @@ export default function PnLChart() {
               />
             </AreaChart>
           </ResponsiveContainer>
+        </div>
         </div>
       ) : (
         <div className="h-64 flex flex-col items-center justify-center bg-white/5 rounded-lg border border-gray-700/50">

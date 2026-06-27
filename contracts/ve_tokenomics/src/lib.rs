@@ -10,6 +10,7 @@ mod test;
 
 use math::calculate_voting_power;
 use storage::{DataKey, UserLock, MAX_TIME, WEEK};
+use storage_helpers::{extend_instance_ttl_default, extend_persistent_ttl_default};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -46,6 +47,7 @@ impl VeTokenomics {
             .instance()
             .set(&DataKey::YieldToken, &yield_token);
         env.storage().instance().set(&DataKey::Initialized, &true);
+        extend_instance_ttl_default(&env);
         Ok(())
     }
 
@@ -77,11 +79,9 @@ impl VeTokenomics {
             return Err(Error::InvalidUnlockTime);
         }
 
-        if env
-            .storage()
-            .persistent()
-            .has(&DataKey::UserLock(from.clone()))
-        {
+        let lock_key = DataKey::UserLock(from.clone());
+        if env.storage().persistent().has(&lock_key) {
+            extend_persistent_ttl_default(&env, &lock_key);
             return Err(Error::LockUnderway);
         }
 
@@ -95,9 +95,8 @@ impl VeTokenomics {
             end: unlock_time,
         };
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::UserLock(from.clone()), &lock);
+        env.storage().persistent().set(&lock_key, &lock);
+        extend_persistent_ttl_default(&env, &lock_key);
 
         env.events()
             .publish((symbol_short!("lock"), from), (amount, unlock_time));
@@ -118,10 +117,12 @@ impl VeTokenomics {
             return Err(Error::ZeroAmount);
         }
 
+        let lock_key = DataKey::UserLock(from.clone());
+        extend_persistent_ttl_default(&env, &lock_key);
         let mut lock: UserLock = env
             .storage()
             .persistent()
-            .get(&DataKey::UserLock(from.clone()))
+            .get(&lock_key)
             .ok_or(Error::NoLockFound)?;
 
         let current_time = env.ledger().timestamp();
@@ -137,9 +138,8 @@ impl VeTokenomics {
         // Update lock
         lock.amount += amount;
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::UserLock(from.clone()), &lock);
+        env.storage().persistent().set(&lock_key, &lock);
+        extend_persistent_ttl_default(&env, &lock_key);
 
         env.events()
             .publish((symbol_short!("inc_amt"), from), (amount, lock.amount));
@@ -156,10 +156,12 @@ impl VeTokenomics {
         Self::require_init(&env)?;
         from.require_auth();
 
+        let lock_key = DataKey::UserLock(from.clone());
+        extend_persistent_ttl_default(&env, &lock_key);
         let mut lock: UserLock = env
             .storage()
             .persistent()
-            .get(&DataKey::UserLock(from.clone()))
+            .get(&lock_key)
             .ok_or(Error::NoLockFound)?;
 
         let current_time = env.ledger().timestamp();
@@ -174,9 +176,8 @@ impl VeTokenomics {
         // Update lock
         lock.end = unlock_time;
 
-        env.storage()
-            .persistent()
-            .set(&DataKey::UserLock(from.clone()), &lock);
+        env.storage().persistent().set(&lock_key, &lock);
+        extend_persistent_ttl_default(&env, &lock_key);
 
         env.events()
             .publish((symbol_short!("inc_time"), from), (unlock_time,));
@@ -192,10 +193,12 @@ impl VeTokenomics {
         Self::require_init(&env)?;
         from.require_auth();
 
+        let lock_key = DataKey::UserLock(from.clone());
+        extend_persistent_ttl_default(&env, &lock_key);
         let lock: UserLock = env
             .storage()
             .persistent()
-            .get(&DataKey::UserLock(from.clone()))
+            .get(&lock_key)
             .ok_or(Error::NoLockFound)?;
 
         let current_time = env.ledger().timestamp();
@@ -209,9 +212,7 @@ impl VeTokenomics {
         client.transfer(&env.current_contract_address(), &from, &lock.amount);
 
         // Remove lock
-        env.storage()
-            .persistent()
-            .remove(&DataKey::UserLock(from.clone()));
+        env.storage().persistent().remove(&lock_key);
 
         env.events()
             .publish((symbol_short!("withdraw"), from), (lock.amount,));
@@ -235,10 +236,12 @@ impl VeTokenomics {
             return Err(Error::InvalidWeight);
         }
 
+        let lock_key = DataKey::UserLock(from.clone());
+        extend_persistent_ttl_default(&env, &lock_key);
         let lock: UserLock = env
             .storage()
             .persistent()
-            .get(&DataKey::UserLock(from.clone()))
+            .get(&lock_key)
             .ok_or(Error::NoLockFound)?;
 
         let current_time = env.ledger().timestamp();
@@ -258,8 +261,10 @@ impl VeTokenomics {
     ///
     /// Voting power is calculated based on the locked amount and time remaining until unlock.
     pub fn get_voting_power(env: Env, user: Address) -> i128 {
-        let lock_opt: Option<UserLock> = env.storage().persistent().get(&DataKey::UserLock(user));
+        let lock_key = DataKey::UserLock(user);
+        let lock_opt: Option<UserLock> = env.storage().persistent().get(&lock_key);
         if let Some(lock) = lock_opt {
+            extend_persistent_ttl_default(&env, &lock_key);
             let current_time = env.ledger().timestamp();
             calculate_voting_power(lock.amount, lock.end, current_time)
         } else {
@@ -269,8 +274,10 @@ impl VeTokenomics {
 
     /// Returns the timestamp when `user` can withdraw their tokens.
     pub fn get_unlock_time(env: Env, user: Address) -> u64 {
-        let lock_opt: Option<UserLock> = env.storage().persistent().get(&DataKey::UserLock(user));
+        let lock_key = DataKey::UserLock(user);
+        let lock_opt: Option<UserLock> = env.storage().persistent().get(&lock_key);
         if let Some(lock) = lock_opt {
+            extend_persistent_ttl_default(&env, &lock_key);
             lock.end
         } else {
             0
@@ -283,6 +290,7 @@ impl VeTokenomics {
         if !env.storage().instance().has(&DataKey::Initialized) {
             return Err(Error::NotInitialized);
         }
+        extend_instance_ttl_default(env);
         Ok(())
     }
 }

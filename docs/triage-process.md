@@ -1,51 +1,31 @@
 # Maintainer Issue Triage Process
 
-**Triage Process**
+This document outlines the weekly issue triage workflow for StellarYield maintainers, especially during the Stellar Wave program. It provides a repeatable workflow for claimed, unclaimed, blocked, and ready-for-review work without requiring private repository permissions.
 
-- **Purpose:** Provide a repeatable daily workflow for maintainers to triage issues, signals, and operational alerts without changing GitHub permissions.
+## Triage States
 
-**Triage States**
-- `unassigned`: No maintainer owns the issue; default incoming state.
-- `claimed`: A maintainer has taken ownership and is working the issue.
-- `blocked`: Work cannot proceed until an external dependency or data is available.
-- `review-needed`: Work complete, needs another maintainer to approve or verify.
+- `unclaimed`: No contributor owns the issue. This is the default incoming state for public Wave issues.
+- `claimed`: A contributor or maintainer has taken ownership and is actively working the issue.
+- `blocked`: Work cannot proceed until an external dependency, maintainer answer, or deployment detail is available.
+- `review-needed`: A pull request exists and needs maintainer review, CI verification, or deployment validation.
 
-**Daily Maintainer Workflow (repeatable)**
-1. Morning scan (10–20 minutes): run saved searches (examples below) to collect new `unassigned` items.
-2. Claim items you can resolve quickly. Mark as `claimed` in the issue body or labels.
-3. For items needing input (from ops, infra, nodes, or third parties), mark `blocked` and add a clear next-step.
-4. For code or strategy changes finish work and mark `review-needed` with a short checklist.
-5. End-of-day: update any long-running `claimed` items with progress notes and estimate next steps.
+## Saved Search Queries
 
-**Saved-search examples / lightweight reporting**
-We keep some simple shell helpers in `scripts/` to produce lists you can paste into Slack or create issues from.
+Use the following saved searches and dashboard commands to keep tracking work visible:
 
-- `scripts/maintainer_saved_searches.sh` — example saved searches for quick triage (example usage: run locally and paste results into a triage ticket).
+- `scripts/maintainer_saved_searches.sh` — example saved searches for quick triage (run locally and paste the output into a triage ticket).
 - `scripts/issue-triage.js` — automated dashboard showing current triage state counts (see below).
 
-**Escalation & Handoff**
-- If something is `blocked` for >24h, ping the on-call channel with a short context message and link.
-- For `review-needed`, if no reviewer in 24h, post a short summary and tag the rotation-maintainers group.
+### Maintainer Triage Dashboard
 
-**Notes**
-- This process is intentionally permission-agnostic. Use labels and issue body markers rather than requiring new team membership.
-
----
-
-# Weekly Triage Dashboard & Workflow
-
-This document outlines the weekly issue triage workflow for the StellarYield maintainers, particularly for the Stellar Wave program.
-
-## Maintainer Triage Dashboard
-
-Run this command to get a quick overview of all triage-relevant issues:
+Run this command to get a quick overview of triage-relevant issues:
 
 ```bash
 GITHUB_TOKEN=ghp_xxx node scripts/issue-triage.js
 ```
 
 **Output example:**
-```
+```text
 📊 StellarYield Maintainer Triage Dashboard
 ==================================================
 
@@ -57,12 +37,10 @@ GITHUB_TOKEN=ghp_xxx node scripts/issue-triage.js
 📈 Total Open Issues:          28
 ```
 
-### Setting up the GitHub Token
+### GitHub Token Setup
 
 1. Visit https://github.com/settings/tokens/new
-2. Create a **Personal Access Token (Classic)** with these scopes:
-   - `repo` (full control of private repositories)
-   - `public_repo` (access to public repositories)
+2. Create a **Personal Access Token (Classic)** with the `repo` and `public_repo` scopes.
 3. Copy the token and save it securely:
    ```bash
    export GITHUB_TOKEN=ghp_xxx
@@ -72,37 +50,21 @@ GITHUB_TOKEN=ghp_xxx node scripts/issue-triage.js
    node scripts/issue-triage.js
    ```
 
-## Saved Search Queries / Triage States
+### Recommended Queries
 
-To maintain visibility over community contributions, use the following GitHub search queries:
+| State | Query | Action |
+| --- | --- | --- |
+| Unclaimed issues | `is:issue is:open label:"Stellar Wave" label:"help wanted" no:assignee` | Check clarity, add `good-first-issue` when appropriate, and invite contributors to claim. |
+| Claimed issues | `is:issue is:open label:"Stellar Wave" assignee:*` | Check for stale claims and ask for an update after seven inactive days. |
+| Ready for review | `is:pr is:open label:"Stellar Wave" review:required` | Assign or request a maintainer review. |
+| Blocked issues | `is:issue is:open label:"blocked"` | Follow up on the missing input and remove the label once unblocked. |
 
-1. **Unclaimed Issues (Ready for Community)**
-   ```
-   is:issue is:open label:"Stellar Wave" label:"help wanted" no:assignee
-   ```
-   *Action:* Review for clarity, add 'good first issue' if applicable.
+**Escalation & Handoff**
+- If something is `blocked` for more than 24 hours, ping the on-call channel with a short context message and link.
+- For `review-needed`, if no reviewer is assigned within 24 hours, post a short summary and tag the rotation-maintainers group.
 
-2. **Claimed Issues (In Progress)**
-   ```
-   is:issue is:open label:"Stellar Wave" has:assignee -linked:pr
-   ```
-   *Action:* Ping assignees if there has been no activity for >7 days.
-
-3. **Ready for Review (PR Submitted)**
-   ```
-   is:pr is:open label:"Stellar Wave" review:required
-   ```
-   *Action:* Assign a maintainer to review.
-
-4. **Blocked / Needs Input**
-   ```
-   is:issue is:open label:blocked
-   ```
-   or
-   ```
-   is:issue is:open label:"needs info"
-   ```
-   *Action:* Follow up on requested information.
+**Notes**
+- This process is intentionally permission-agnostic. Use labels and issue body markers rather than requiring new team membership.
 
 ### Creating Saved Searches
 
@@ -115,67 +77,35 @@ To maintain visibility over community contributions, use the following GitHub se
 
 Every Monday (or on your chosen triage day), maintainers should follow this process:
 
-### 1. Run the Dashboard (5 minutes)
-```bash
-GITHUB_TOKEN=ghp_xxx node scripts/issue-triage.js
-```
-Note the counts for unclaimed, claimed, blocked, and needs-info issues.
+1. Review new issues created in the past week and apply accurate labels such as `Stellar Wave`, `bug`, `enhancement`, or `points: 200`.
+2. Run the saved searches above or `node scripts/issue-triage.js` from the repository root.
+3. Re-open unclear issues with a short question and the `needs info` label.
+4. Check stale claimed issues. If there has been no response for more than seven days, ask for an update before unassigning.
+5. Review blocked issues and add a concrete next step, owner, and expected follow-up date.
+6. Move PR-backed work into review by confirming linked issues, CI status, preview deployment status, and screenshots when UI changed.
 
-### 2. Review New Issues (10 minutes)
-- Visit the **Unclaimed Wave Issues** saved search
-- For each new issue:
-  - ✅ Verify it has clear acceptance criteria
-  - ✅ Assign appropriate labels (`bug`, `enhancement`, `points: 200`, etc.)
-  - ✅ Add `good first issue` if suitable for newcomers
-  - ✅ Ping on-call ops if it requires urgent action (e.g., production outage)
+### Suggested Cadence
 
-### 3. Check Stale Claims (10 minutes)
-- Visit the **Claimed Wave Issues** saved search
-- For each claimed issue with no activity for >7 days:
-  - 💬 Leave a comment: `@user, checking in — any blockers on this?`
-  - 🔄 If no response in 24h, unassign and re-label as `unclaimed`
-  - 🙋 Consider offering help or pairing
+- Run the dashboard first to capture the current counts for unclaimed, claimed, blocked, and needs-info issues.
+- Review each new issue for clear acceptance criteria and assign labels where needed.
+- Ping assignees or contributors if a claimed issue has gone stale for more than seven days.
+- Keep the triage thread visible by documenting blockers and next actions.
 
-### 4. Unblock Contributors (10 minutes)
-- Visit the **Blocked Issues** and **Needs Info** saved searches
-- Answer open questions or provide requested data
-- Remove the `blocked` or `needs info` label once resolved
+## Public Contributor Workflow
 
-### 5. Review PRs (10 minutes)
-- Visit the **Ready for Review** saved search
-- Assign a reviewer if one hasn't been assigned
-- Track PR approval status in a shared triage issue (optional)
+Public contributors may not be assignable until they comment or join the repository workflow. If GitHub assignment is unavailable, add a comment such as:
 
-### 6. Document & Slack Summary (5 minutes)
-Post a quick summary to your maintainer channel:
-```
-📊 Weekly Triage Summary
-- Unclaimed: 12 (↑2 from last week)
-- Claimed: 5 (→ stable)
-- Blocked: 2 (⚠️ 1 waiting on infra)
-- PRs pending: 3
-→ Action: Follow up on issue #XXX (needs external data)
+```text
+@username has claimed this issue.
 ```
 
-## Public Contributor Considerations
+Keep the claim visible in the issue thread, and ask contributors to link their PR with `Fixes #ISSUE_NUMBER` so review and closure stay connected.
 
-Ensure that labels are clear, and that any "claimed" state is visibly marked by assigning the user. If the user cannot be assigned due to GitHub permissions, add a comment explicitly stating: `@username has claimed this issue.`
+## Escalation and Handoff
 
-### Good First Issue Best Practices
-
-1. **Clear scope:** Acceptance criteria should fit in 1–2 hours of work
-2. **Helpful context:** Link to relevant code, docs, and related issues
-3. **Responsive:** Plan to review PRs within 24 hours
-4. **Encouraging:** Welcome first-time contributors and offer help in reviews
-
-## Escalation Playbook
-
-| Situation | Action | Time |
-| --- | --- | --- |
-| **Claimed issue, no update >7d** | Comment `@user checking in — any blockers?` | Within 1 day |
-| **Blocked issue, no data >24h** | Ping on-call channel or escalate to relevant team | Immediately |
-| **PR pending review >48h** | Tag rotation-maintainers group or escalate | Immediately |
-| **Unclassified issue, unclear scope** | Mark `needs clarification` and comment with questions | Within 1 day |
+- If an issue is blocked for more than 24 hours, post a short context update and link the issue in the maintainer channel.
+- If a PR is ready for review for more than 24 hours, tag the reviewer rotation with the PR link and the first needed action.
+- If a contributor needs to hand off a claimed issue, ask them to leave their branch, test notes, and remaining task list in the issue.
 
 ## Tools & Links
 

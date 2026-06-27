@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { Horizon, rpc as SorobanRpc } from "@stellar/stellar-sdk";
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
+import { validateServerEnv } from "../config/env";
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -164,7 +165,8 @@ router.get("/queues", async (_req: Request, res: Response) => {
   try {
     const entries: QueueHealthEntry[] = await Promise.all(
       ALL_QUEUE_NAMES.map(async (name): Promise<QueueHealthEntry> => {
-        const queue = new Queue(name, { connection: redis });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const queue = new Queue(name, { connection: redis as any });
         try {
           const raw = await withTimeout(
             queue.getJobCounts("waiting", "active", "completed", "failed", "delayed"),
@@ -218,6 +220,186 @@ router.get("/queues", async (_req: Request, res: Response) => {
   } finally {
     await redis.quit().catch(() => {});
   }
+});
+
+export type DependencyStatus = "up" | "down" | "warning";
+
+export interface DependencyDetail {
+  status: DependencyStatus;
+  latencyMs?: number;
+  hint?: string;
+}
+
+export interface DependenciesResponse {
+  database: DependencyDetail;
+  horizon: DependencyDetail & { latestLedger?: number };
+  indexer: DependencyDetail & { syncedLedger?: number; lagLedgers?: number };
+  cache: DependencyDetail;
+  timestamp: string;
+  overallStatus: DependencyStatus;
+}
+
+async function checkDatabaseWithLatency(): Promise<DependencyDetail> {
+  const start = Date.now();
+  try {
+    await withTimeout(prisma.$queryRaw`SELECT 1`, HEALTH_TIMEOUT_MS);
+    return { status: "up", latencyMs: Date.now() - start };
+  } catch {
+    return { status: "down", hint: "Database unreachable — check DATABASE_URL and Postgres availability" };
+  }
+}
+
+async function checkHorizonWithLatency(): Promise<DependencyDetail & { latestLedger?: number }> {
+  const start = Date.now();
+  try {
+    const horizon = new Horizon.Server(HORIZON_URL);
+    const resp = await withTimeout(
+      horizon.ledgers().limit(1).order("desc").call(),
+      HEALTH_TIMEOUT_MS,
+    );
+    return {
+      status: "up",
+      latencyMs: Date.now() - start,
+      latestLedger: resp.records[0]?.sequence,
+    };
+  } catch {
+    return {
+      status: "down",
+      hint: "Horizon unreachable — check STELLAR_HORIZON_URL or network connectivity",
+    };
+  }
+}
+
+async function checkIndexerWithLatency(
+  latestLedger?: number,
+): Promise<DependencyDetail & { syncedLedger?: number; lagLedgers?: number }> {
+  const start = Date.now();
+  try {
+    const state = await withTimeout(
+      prisma.indexerState.findFirst(),
+      HEALTH_TIMEOUT_MS,
+    );
+    const syncedLedger = state?.lastLedger ?? 0;
+    const lagLedgers = latestLedger ? latestLedger - syncedLedger : undefined;
+    const latencyMs = Date.now() - start;
+
+    if (lagLedgers !== undefined && lagLedgers >= 50) {
+      return {
+        status: "warning",
+        latencyMs,
+        syncedLedger,
+        lagLedgers,
+        hint: `Indexer is ${lagLedgers} ledgers behind — may indicate a stalled indexer process`,
+      };
+    }
+    return { status: "up", latencyMs, syncedLedger, lagLedgers };
+  } catch {
+    return {
+      status: "down",
+      hint: "Indexer state unavailable — check database connectivity and indexer process",
+    };
+  }
+}
+
+async function checkCacheWithLatency(): Promise<DependencyDetail> {
+  const redis = new Redis(REDIS_URL, {
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false,
+    lazyConnect: true,
+  });
+  const start = Date.now();
+  try {
+    await withTimeout(redis.ping(), HEALTH_TIMEOUT_MS);
+    return { status: "up", latencyMs: Date.now() - start };
+  } catch {
+    return {
+      status: "down",
+      hint: "Redis unreachable — check REDIS_URL and Redis availability",
+    };
+  } finally {
+    await redis.quit().catch(() => {});
+  }
+}
+
+/**
+ * GET /health/dependencies
+ *
+ * Returns a per-dependency breakdown of database, Horizon, indexer, and cache
+ * health. Includes safe latency hints where available. Never exposes credentials
+ * or private user data.
+ */
+router.get("/dependencies", async (_req: Request, res: Response) => {
+  const [database, horizon] = await Promise.all([
+    checkDatabaseWithLatency(),
+    checkHorizonWithLatency(),
+  ]);
+
+  const [indexer, cache] = await Promise.all([
+    checkIndexerWithLatency(horizon.latestLedger),
+    checkCacheWithLatency(),
+  ]);
+
+  const statuses: DependencyStatus[] = [
+    database.status,
+    horizon.status,
+    indexer.status,
+    cache.status,
+  ];
+
+  const overallStatus: DependencyStatus = statuses.includes("down")
+    ? "down"
+    : statuses.includes("warning")
+      ? "warning"
+      : "up";
+
+  const body: DependenciesResponse = {
+    database,
+    horizon,
+    indexer,
+    cache,
+    timestamp: new Date().toISOString(),
+    overallStatus,
+  };
+
+  res.status(overallStatus === "down" ? 503 : 200).json(body);
+});
+
+/**
+ * GET /health/startup
+ *
+ * Exposes a startup health summary backing environment validation checks without leaking credentials.
+ */
+router.get("/startup", async (_req: Request, res: Response) => {
+  const env = process.env;
+  const validation = validateServerEnv(env);
+
+  const hasValue = (val: string | undefined): boolean =>
+    typeof val === "string" && val.trim().length > 0;
+
+  const capabilities = {
+    database: hasValue(env.DATABASE_URL) ? "operational" : "disabled",
+    mongodb: hasValue(env.MONGODB_URI) ? "operational" : "disabled",
+    feeBumpRelayer: (hasValue(env.RELAYER_SECRET_KEY) && env.RELAYER_SECRET_KEY !== "SAH2...") ? "operational" : "disabled",
+    zapQuoting: (hasValue(env.DEX_ROUTER_CONTRACT_ID) && hasValue(env.ZAP_QUOTE_SIM_SOURCE_ACCOUNT)) ? "operational" : "disabled",
+    sorobanRpc: hasValue(env.SOROBAN_RPC_URL) ? "operational" : "fallback",
+    horizonRpc: hasValue(env.STELLAR_HORIZON_URL) ? "operational" : "fallback",
+  };
+
+  const status = validation.errors.length > 0
+    ? "failed"
+    : validation.warnings.length > 0
+      ? "degraded"
+      : "healthy";
+
+  const body = {
+    status,
+    capabilities,
+    errors: validation.errors,
+    warnings: validation.warnings,
+    timestamp: new Date().toISOString(),
+  };
+
+  res.status(status === "failed" ? 503 : 200).json(body);
 });
 
 export default router;

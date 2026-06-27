@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { getApiBaseUrl } from "../../lib/api";
 import { resolveAppBaseUrl, buildReferralLink } from "./referralLink";
+import ApiErrorBanner from "../../components/ApiErrorBanner/ApiErrorBanner";
 
 interface ReferralData {
   referredTvl: number;
@@ -20,7 +21,14 @@ interface ReferralData {
   referralLink: string;
 }
 
-const API_BASE = getApiBaseUrl();
+const getApiBase = () => {
+  try {
+    return getApiBaseUrl();
+  } catch {
+    return "";
+  }
+};
+
 const { url: APP_URL, isFallback: APP_URL_IS_FALLBACK } = resolveAppBaseUrl(
   import.meta.env.VITE_APP_URL as string | undefined,
 );
@@ -62,7 +70,7 @@ export default function ReferralDashboard() {
 
     try {
       const res = await fetch(
-        `${API_BASE}/api/referrals/${encodeURIComponent(walletAddress)}`,
+        `${getApiBase()}/api/referrals/${encodeURIComponent(walletAddress)}`,
       );
       if (!res.ok) throw new Error("Failed to fetch referral data");
       const data: ReferralData = await res.json();
@@ -116,7 +124,7 @@ export default function ReferralDashboard() {
     setClaimSuccess(false);
 
     try {
-      const res = await fetch(`${API_BASE}/api/referrals/claim`, {
+      const res = await fetch(`${getApiBase()}/api/referrals/claim`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address: walletAddress }),
@@ -156,7 +164,7 @@ export default function ReferralDashboard() {
     setSubmitting(true);
     
     try {
-      const res = await fetch(`${API_BASE}/api/referrals/submit`, {
+      const res = await fetch(`${getApiBase()}/api/referrals/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address: walletAddress, referralCode: referralCodeInput }),
@@ -204,10 +212,7 @@ export default function ReferralDashboard() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 rounded-xl p-3">
-          <AlertCircle className="text-red-400 shrink-0" size={18} />
-          <p className="text-red-400 text-sm">{error}</p>
-        </div>
+        <ApiErrorBanner message={error} onRetry={fetchReferralData} />
       )}
 
       {claimSuccess && (

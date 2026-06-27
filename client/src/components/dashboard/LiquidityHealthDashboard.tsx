@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, ShieldCheck, ShieldAlert, ShieldX, Info } from 'lucide-react';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 
 interface LiquidityHealth {
   strategyId: string;
@@ -15,6 +16,7 @@ interface LiquidityHealth {
 }
 
 export const LiquidityHealthDashboard: React.FC = () => {
+  const reducedMotion = useReducedMotion();
   const [scores, setScores] = useState<LiquidityHealth[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -60,12 +62,16 @@ export const LiquidityHealthDashboard: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48">
-        <div className="animate-pulse flex space-x-2">
-          <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
-          <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
-          <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
-        </div>
+      <div className="flex items-center justify-center h-48" role="status">
+        {reducedMotion ? (
+          <span className="text-sm text-slate-400 font-medium">Loading liquidity health...</span>
+        ) : (
+          <div className="animate-pulse flex space-x-2">
+            <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
+            <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
+            <div className="h-2 w-2 bg-slate-400 rounded-full"></div>
+          </div>
+        )}
       </div>
     );
   }
@@ -98,10 +104,10 @@ export const LiquidityHealthDashboard: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-4 mb-2">
-              <ComponentBar label="Depth" value={s.components.depth} color="bg-blue-500" />
-              <ComponentBar label="Spread" value={s.components.spread} color="bg-indigo-500" />
-              <ComponentBar label="Stability" value={s.components.stability} color="bg-cyan-500" />
-              <ComponentBar label="Withdrawal" value={s.components.withdrawalSensitivity} color="bg-teal-500" />
+              <ComponentBar label="Depth" value={s.components.depth} color="bg-blue-500" reducedMotion={reducedMotion} />
+              <ComponentBar label="Spread" value={s.components.spread} color="bg-indigo-500" reducedMotion={reducedMotion} />
+              <ComponentBar label="Stability" value={s.components.stability} color="bg-cyan-500" reducedMotion={reducedMotion} />
+              <ComponentBar label="Withdrawal" value={s.components.withdrawalSensitivity} color="bg-teal-500" reducedMotion={reducedMotion} />
             </div>
 
             {s.status === 'critical' && (
@@ -117,7 +123,7 @@ export const LiquidityHealthDashboard: React.FC = () => {
   );
 };
 
-const ComponentBar: React.FC<{ label: string; value: number; color: string }> = ({ label, value, color }) => (
+const ComponentBar: React.FC<{ label: string; value: number; color: string; reducedMotion: boolean }> = ({ label, value, color, reducedMotion }) => (
   <div>
     <div className="flex justify-between items-center mb-1">
       <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{label}</span>
@@ -125,8 +131,11 @@ const ComponentBar: React.FC<{ label: string; value: number; color: string }> = 
     </div>
     <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
       <div 
-        className={`h-full ${color} transition-all duration-500`} 
-        style={{ width: `${value}%` }}
+        className={`h-full ${color} transition-all`} 
+        style={{ 
+          width: `${value}%`,
+          transitionDuration: reducedMotion ? '0s' : '500ms'
+        }}
       />
     </div>
   </div>

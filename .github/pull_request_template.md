@@ -21,6 +21,7 @@ Fixes # (issue number)
 - [ ] No new admin roles without governance proposal
 
 ## UI Snapshot Checklist
+
 **If your PR modifies the frontend UI:**
 - [ ] Screenshots provided for Desktop (1024px+)
 - [ ] Screenshots provided for Mobile (375px)

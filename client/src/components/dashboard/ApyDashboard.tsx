@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { FeeAssumptionsModal } from "../FeeAssumptionsModal";
 import {
   BarChart3,
   ArrowUpRight,
@@ -60,6 +62,13 @@ interface ApyEntry {
 type SortField = "apy" | "tvl" | "risk" | "protocol";
 type SortDirection = "asc" | "desc";
 type ViewMode = "grid" | "table";
+
+const SORT_LABELS: Record<SortField, string> = {
+  apy: "APY",
+  tvl: "TVL",
+  risk: "risk",
+  protocol: "protocol",
+};
 
 interface ApiApyEntry {
   protocol?: unknown;
@@ -163,11 +172,33 @@ function getErrorMessage(error: unknown): string {
   return "Unable to fetch live APY data right now";
 }
 
+function getSortButtonLabel(
+  field: SortField,
+  activeField: SortField,
+  direction: SortDirection,
+): string {
+  const label = SORT_LABELS[field];
+  if (field !== activeField) return `Sort by ${label}`;
+  return `Sort by ${label}, currently ${
+    direction === "asc" ? "ascending" : "descending"
+  }`;
+}
+
+function getAriaSort(
+  field: SortField,
+  activeField: SortField,
+  direction: SortDirection,
+): "ascending" | "descending" | "none" {
+  if (field !== activeField) return "none";
+  return direction === "asc" ? "ascending" : "descending";
+}
+
 // ── Skeleton Components ─────────────────────────────────────────────────
 
 function SkeletonCard() {
+  const reducedMotion = useReducedMotion();
   return (
-    <div className="glass-card p-6 animate-pulse">
+    <div className={`glass-card p-6 ${reducedMotion ? "" : "animate-pulse"}`}>
       <div className="flex items-center gap-3 mb-5">
         <div className="w-10 h-10 rounded-xl bg-white/5"></div>
         <div className="space-y-2 flex-1">
@@ -186,8 +217,9 @@ function SkeletonCard() {
 }
 
 function SkeletonTableRow() {
+  const reducedMotion = useReducedMotion();
   return (
-    <tr className="animate-pulse">
+    <tr className={reducedMotion ? "" : "animate-pulse"}>
       <td className="px-6 py-5">
         <div className="h-4 bg-white/5 rounded-lg w-20"></div>
       </td>
@@ -214,8 +246,9 @@ function SkeletonTableRow() {
 }
 
 function SkeletonSummary() {
+  const reducedMotion = useReducedMotion();
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 animate-pulse">
+    <div className={`grid grid-cols-1 md:grid-cols-4 gap-4 ${reducedMotion ? "" : "animate-pulse"}`}>
       {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="glass-card p-5">
           <div className="h-3 bg-white/5 rounded-lg w-24 mb-3"></div>
@@ -229,6 +262,8 @@ function SkeletonSummary() {
 // ── Main Component ──────────────────────────────────────────────────────
 
 export default function ApyDashboard() {
+  const reducedMotion = useReducedMotion();
+  const [isFeeModalOpen, setIsFeeModalOpen] = useState(false);
   const [apyData, setApyData] = useState<ApyEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -345,6 +380,7 @@ export default function ApyDashboard() {
   const SortIcon = ({ field }: { field: SortField }) => (
     <ChevronDown
       size={14}
+      aria-hidden="true"
       className={`inline-block ml-1 transition-transform ${
         sortField === field ? "opacity-100" : "opacity-0 group-hover:opacity-50"
       } ${sortField === field && sortDirection === "asc" ? "rotate-180" : ""}`}
@@ -355,7 +391,7 @@ export default function ApyDashboard() {
 
   if (error && !apyData.length) {
     return (
-      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className={`space-y-8 ${reducedMotion ? "" : "animate-in fade-in slide-in-from-bottom-4 duration-700"}`}>
         <header className="mb-6">
           <h2 className="text-4xl font-extrabold tracking-tight mb-2">
             APY Comparison
@@ -386,7 +422,7 @@ export default function ApyDashboard() {
   // ── Render ────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className={`space-y-8 ${reducedMotion ? "" : "animate-in fade-in slide-in-from-bottom-4 duration-700"}`}>
       {/* Header */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -407,7 +443,7 @@ export default function ApyDashboard() {
           disabled={refreshing}
           className="btn-secondary flex items-center gap-2 text-sm self-start md:self-auto disabled:opacity-50"
         >
-          <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+          <RefreshCw size={14} className={refreshing && !reducedMotion ? "animate-spin" : ""} />
           {refreshing ? "Refreshing..." : "Refresh Rates"}
         </button>
       </header>
@@ -427,7 +463,7 @@ export default function ApyDashboard() {
             onClick={handleRefresh}
             className="btn-secondary inline-flex items-center gap-2 text-sm self-start sm:self-auto"
           >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            <RefreshCw size={14} className={refreshing && !reducedMotion ? "animate-spin" : ""} />
             Retry
           </button>
         </div>
@@ -481,7 +517,16 @@ export default function ApyDashboard() {
       {!loading && feeAttributionRows.length > 0 && (
         <section className="glass-panel p-5">
           <div className="mb-3">
-            <h3 className="text-lg font-semibold">Cross-Vault Fee Attribution</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold">Cross-Vault Fee Attribution</h3>
+              <button 
+                onClick={() => setIsFeeModalOpen(true)}
+                className="text-gray-400 hover:text-white transition-colors cursor-pointer"
+                aria-label="View fee assumptions"
+              >
+                <Info size={16} />
+              </button>
+            </div>
             <p className="text-xs text-gray-400">
               Comparative fee drag by management, protocol, slippage, network, reward offsets, and unknown components.
             </p>
@@ -561,6 +606,7 @@ export default function ApyDashboard() {
         <div className="glass-card flex overflow-hidden p-1 gap-1">
           <button
             onClick={() => setViewMode("grid")}
+            aria-pressed={viewMode === "grid"}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               viewMode === "grid"
                 ? "bg-[#6C5DD3] text-white"
@@ -572,6 +618,7 @@ export default function ApyDashboard() {
           </button>
           <button
             onClick={() => setViewMode("table")}
+            aria-pressed={viewMode === "table"}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
               viewMode === "table"
                 ? "bg-[#6C5DD3] text-white"
@@ -610,7 +657,7 @@ export default function ApyDashboard() {
                   <div
                     key={`${entry.protocol}-${entry.asset}`}
                     className="glass-card p-6 flex flex-col justify-between group"
-                    style={{ animationDelay: `${i * 60}ms` }}
+                    style={reducedMotion ? {} : { animationDelay: `${i * 60}ms` }}
                   >
                     {/* Protocol + Asset */}
                     <div>
@@ -628,35 +675,43 @@ export default function ApyDashboard() {
                             {entry.category}
                           </p>
                         </div>
-                        <div
+                        <button
+                          type="button"
                           className="group/risk relative flex cursor-help outline-none"
-                          tabIndex={0}
                           aria-describedby={`risk-tip-grid-${entry.protocol}-${entry.asset}`}
+                          aria-label={`${entry.protocol} ${entry.asset} risk: ${entry.risk}. ${risk.explanation}`}
                         >
                           <span
                             className={`${risk.bg} ${risk.color} ${risk.border} border px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1`}
                           >
-                            {entry.risk} <Info size={10} />
+                            {entry.risk} <Info size={10} aria-hidden="true" />
                           </span>
-                          <div
+                          <span
                             id={`risk-tip-grid-${entry.protocol}-${entry.asset}`}
                             role="tooltip"
                             className="absolute hidden group-hover/risk:block group-focus-within/risk:block bottom-full mb-2 right-0 w-48 p-2 bg-[#1A1A24] border border-white/10 rounded-lg text-xs leading-relaxed text-gray-300 shadow-xl z-10 transition-opacity"
                           >
                             {risk.explanation}
-                          </div>
-                        </div>
+                          </span>
+                        </button>
                       </div>
 
                       {/* Freshness Indicator */}
                       <div className="flex items-center gap-1.5 mb-3 text-[10px] font-medium uppercase tracking-wider">
                         {isStale ? (
-                          <span className="text-red-400 flex items-center gap-1 bg-red-400/10 px-2 py-0.5 rounded-full">
-                            <Clock size={10} /> Stale Data ({diffMins}m old)
+                          <span
+                            className="text-red-400 flex items-center gap-1 bg-red-400/10 px-2 py-0.5 rounded-full"
+                            aria-label={`Stale data, ${diffMins} minutes old`}
+                          >
+                            <Clock size={10} aria-hidden="true" /> Stale Data
+                            ({diffMins}m old)
                           </span>
                         ) : (
-                          <span className="text-gray-500 flex items-center gap-1">
-                            <Clock size={10} /> Updated just now (
+                          <span
+                            className="text-gray-500 flex items-center gap-1"
+                            aria-label={`Updated just now, ${Math.round((entry.freshnessConfidence ?? 1) * 100)} percent confidence`}
+                          >
+                            <Clock size={10} aria-hidden="true" /> Updated just now (
                             {Math.round((entry.freshnessConfidence ?? 1) * 100)}
                             % confidence)
                           </span>
@@ -679,9 +734,15 @@ export default function ApyDashboard() {
                           % APY
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500">
-                        Gross {(entry.totalApy ?? entry.apy).toFixed(2)}% | Drag{" "}
-                        {(entry.feeDragApy ?? 0).toFixed(2)}%
+                      <p className="text-xs text-gray-500 flex items-center gap-1.5">
+                        <span>Gross {(entry.totalApy ?? entry.apy).toFixed(2)}% | Drag {(entry.feeDragApy ?? 0).toFixed(2)}%</span>
+                        <button
+                          onClick={() => setIsFeeModalOpen(true)}
+                          className="text-gray-500 hover:text-white transition-colors cursor-pointer"
+                          aria-label="View fee assumptions"
+                        >
+                          <Info size={12} />
+                        </button>
                       </p>
 
                       {/* 24h Change + TVL */}
@@ -760,7 +821,7 @@ export default function ApyDashboard() {
             onClick={handleRefresh}
             className="btn-secondary inline-flex items-center gap-2 mt-6"
           >
-            <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+            <RefreshCw size={14} className={refreshing && !reducedMotion ? "animate-spin" : ""} />
             Refresh
           </button>
         </div>
@@ -774,30 +835,82 @@ export default function ApyDashboard() {
               <thead>
                 <tr className="bg-[rgba(255,255,255,0.02)] text-gray-400 text-xs uppercase tracking-wider">
                   <th
-                    className="px-6 py-4 font-semibold cursor-pointer group select-none"
-                    onClick={() => handleSort("protocol")}
+                    className="px-6 py-4 font-semibold"
+                    aria-sort={getAriaSort(
+                      "protocol",
+                      sortField,
+                      sortDirection,
+                    )}
                   >
-                    Protocol <SortIcon field="protocol" />
+                    <button
+                      type="button"
+                      onClick={() => handleSort("protocol")}
+                      aria-pressed={sortField === "protocol"}
+                      aria-label={getSortButtonLabel(
+                        "protocol",
+                        sortField,
+                        sortDirection,
+                      )}
+                      className="group inline-flex items-center uppercase tracking-wider text-left"
+                    >
+                      Protocol <SortIcon field="protocol" />
+                    </button>
                   </th>
                   <th className="px-6 py-4 font-semibold">Asset</th>
                   <th
-                    className="px-6 py-4 font-semibold cursor-pointer group select-none"
-                    onClick={() => handleSort("apy")}
+                    className="px-6 py-4 font-semibold"
+                    aria-sort={getAriaSort("apy", sortField, sortDirection)}
                   >
-                    APY <SortIcon field="apy" />
+                    <button
+                      type="button"
+                      onClick={() => handleSort("apy")}
+                      aria-pressed={sortField === "apy"}
+                      aria-label={getSortButtonLabel(
+                        "apy",
+                        sortField,
+                        sortDirection,
+                      )}
+                      className="group inline-flex items-center uppercase tracking-wider text-left"
+                    >
+                      APY <SortIcon field="apy" />
+                    </button>
                   </th>
                   <th className="px-6 py-4 font-semibold">24h Change</th>
                   <th
-                    className="px-6 py-4 font-semibold cursor-pointer group select-none"
-                    onClick={() => handleSort("tvl")}
+                    className="px-6 py-4 font-semibold"
+                    aria-sort={getAriaSort("tvl", sortField, sortDirection)}
                   >
-                    TVL <SortIcon field="tvl" />
+                    <button
+                      type="button"
+                      onClick={() => handleSort("tvl")}
+                      aria-pressed={sortField === "tvl"}
+                      aria-label={getSortButtonLabel(
+                        "tvl",
+                        sortField,
+                        sortDirection,
+                      )}
+                      className="group inline-flex items-center uppercase tracking-wider text-left"
+                    >
+                      TVL <SortIcon field="tvl" />
+                    </button>
                   </th>
                   <th
-                    className="px-6 py-4 font-semibold cursor-pointer group select-none"
-                    onClick={() => handleSort("risk")}
+                    className="px-6 py-4 font-semibold"
+                    aria-sort={getAriaSort("risk", sortField, sortDirection)}
                   >
-                    Risk <SortIcon field="risk" />
+                    <button
+                      type="button"
+                      onClick={() => handleSort("risk")}
+                      aria-pressed={sortField === "risk"}
+                      aria-label={getSortButtonLabel(
+                        "risk",
+                        sortField,
+                        sortDirection,
+                      )}
+                      className="group inline-flex items-center uppercase tracking-wider text-left"
+                    >
+                      Risk <SortIcon field="risk" />
+                    </button>
                   </th>
                   <th className="px-6 py-4 font-semibold text-right">Action</th>
                 </tr>
@@ -828,7 +941,7 @@ export default function ApyDashboard() {
                         <tr
                           key={`${entry.protocol}-${entry.asset}`}
                           className="group hover:bg-[rgba(255,255,255,0.03)] transition-colors"
-                          style={{ animationDelay: `${i * 40}ms` }}
+                          style={reducedMotion ? {} : { animationDelay: `${i * 40}ms` }}
                         >
                           <td className="px-6 py-5">
                             <div className="flex items-center gap-3">
@@ -846,7 +959,10 @@ export default function ApyDashboard() {
                                     {entry.category}
                                   </p>
                                   {isStale && (
-                                    <span className="text-[9px] text-red-400 bg-red-400/10 px-1.5 py-px rounded uppercase">
+                                    <span
+                                      className="text-[9px] text-red-400 bg-red-400/10 px-1.5 py-px rounded uppercase"
+                                      aria-label={`Stale data, ${diffMins} minutes old`}
+                                    >
                                       Stale
                                     </span>
                                   )}
@@ -884,24 +1000,26 @@ export default function ApyDashboard() {
                             {formatTvl(entry.tvl)}
                           </td>
                           <td className="px-6 py-5">
-                            <div
+                            <button
+                              type="button"
                               className="group/risk relative inline-flex cursor-help outline-none"
-                              tabIndex={0}
                               aria-describedby={`risk-tip-table-${entry.protocol}-${entry.asset}`}
+                              aria-label={`${entry.protocol} ${entry.asset} risk: ${entry.risk}. ${risk.explanation}`}
                             >
                               <span
                                 className={`${risk.bg} ${risk.color} ${risk.border} border px-2.5 py-1.5 rounded text-xs font-bold uppercase tracking-wider flex items-center gap-1`}
                               >
-                                {entry.risk} <Info size={12} />
+                                {entry.risk}{" "}
+                                <Info size={12} aria-hidden="true" />
                               </span>
-                              <div
+                              <span
                                 id={`risk-tip-table-${entry.protocol}-${entry.asset}`}
                                 role="tooltip"
                                 className="absolute hidden group-hover/risk:block group-focus-within/risk:block bottom-full mb-2 left-1/2 -translate-x-1/2 w-48 p-2 bg-[#1A1A24] border border-white/10 rounded-lg text-xs leading-relaxed text-gray-300 shadow-xl z-10 transition-opacity"
                               >
                                 {risk.explanation}
-                              </div>
-                            </div>
+                              </span>
+                            </button>
                           </td>
                           <td className="px-6 py-5 text-right">
                             {entry.capitalEfficiency && (
@@ -969,6 +1087,10 @@ export default function ApyDashboard() {
             rationale: [],
           },
         ]}
+      />
+      <FeeAssumptionsModal
+        isOpen={isFeeModalOpen}
+        onClose={() => setIsFeeModalOpen(false)}
       />
     </div>
   );

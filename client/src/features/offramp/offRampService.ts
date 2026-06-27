@@ -28,17 +28,27 @@ function httpErrorType(status: number): OffRampErrorType {
     return "NETWORK_ERROR";
 }
 
+/** Default quote validity window: 5 minutes. */
+export const QUOTE_TTL_MS = 5 * 60 * 1_000;
+
+/**
+ * Returns true when the transaction's provider quote has expired.
+ * A transaction without a quoteExpiresAt is treated as non-expiring.
+ */
+export function isQuoteExpired(tx: import("./types").OffRampTransaction, nowMs = Date.now()): boolean {
+    if (tx.quoteExpiresAt === undefined) return false;
+    return nowMs > tx.quoteExpiresAt;
+}
+
 const STORAGE_KEY = "stellar_yield_offramp_txns";
+
+const OFFRAMP_PROXY = "/api/offramp";
 
 export class OffRampService {
     readonly provider: OffRampProvider;
-    private apiKey: string;
-    private baseUrl: string;
 
-    constructor(provider: OffRampProvider, apiKey: string, baseUrl: string) {
+    constructor(provider: OffRampProvider) {
         this.provider = provider;
-        this.apiKey = apiKey;
-        this.baseUrl = baseUrl;
     }
 
     /**
@@ -48,6 +58,7 @@ export class OffRampService {
     async initiateWithdrawal(request: WithdrawalRequest): Promise<OffRampTransaction> {
         const txId = `offramp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
+        const now = Date.now();
         const transaction: OffRampTransaction = {
             id: txId,
             status: "pending",
@@ -55,7 +66,8 @@ export class OffRampService {
             currency: "USDC",
             bankAccount: request.bankAccount,
             memo: this.generateMemo(request),
-            createdAt: Date.now(),
+            createdAt: now,
+            quoteExpiresAt: now + QUOTE_TTL_MS,
             request, // Store request for potential retries
         };
 
@@ -117,9 +129,7 @@ export class OffRampService {
         if (tx.status === "completed") return tx;
 
         try {
-            const response = await fetch(`${this.baseUrl}/transactions/${txId}`, {
-                headers: { Authorization: `Bearer ${this.apiKey}` },
-            });
+            const response = await fetch(`${OFFRAMP_PROXY}/transactions/${encodeURIComponent(txId)}`);
 
             if (!response.ok) {
                 throw createOffRampError(
@@ -137,28 +147,24 @@ export class OffRampService {
                 tx.completedAt = Date.now();
                 tx.isRetryable = false;
             } else if (status === "failed") {
-                tx.errorMessage = data.error || "Provider reported failure";
-                tx.isRetryable = false; // Usually terminal once provider says "failed"
                 tx.errorMessage = data.error || "Transaction failed";
+                tx.isRetryable = false;
             }
 
             this.saveTransaction(tx);
             return tx;
         } catch (error) {
-            // If it's a transient error (e.g. network), keep status as is but log error
             const isRetryable = this.checkIfRetryable(error);
+            tx.isRetryable = isRetryable;
             if (!isRetryable) {
                 tx.status = "failed";
                 tx.errorMessage = error instanceof Error ? error.message : "Poll failed";
             }
-            tx.isRetryable = isRetryable;
             if (error instanceof OffRampError) {
                 throw error;
             }
             tx.status = "failed";
-            tx.errorMessage = error instanceof OffRampError 
-                ? error.message 
-                : (error instanceof Error ? error.message : "Poll failed");
+            tx.errorMessage = error instanceof Error ? error.message : "Poll failed";
             this.saveTransaction(tx);
             throw createOffRampError(
                 "NETWORK_ERROR",
@@ -238,12 +244,10 @@ export class OffRampService {
         };
 
         try {
-            const response = await fetch(`${this.baseUrl}/withdrawals`, {
+            // Route through backend proxy — API key stays server-side
+            const response = await fetch(`${OFFRAMP_PROXY}/withdrawals`, {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${this.apiKey}`,
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
 

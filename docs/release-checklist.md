@@ -149,7 +149,7 @@ Maintain these settings for stable deployments:
 | Install Command | `npm ci --no-audit` | Matches CI for reproducibility |
 | Build Command | `npm run build` | Vite production build |
 | Output Directory | `dist` | Vite output folder |
-| Node.js Version | 20.x | Matches `.github/workflows/ci.yml` and `package.json` |
+| Node.js Version | `20.x` | Matches `.github/workflows/ci.yml` and `package.json` |
 
 ### Environment Variable Scope
 
@@ -168,7 +168,7 @@ Maintain these settings for stable deployments:
 
 ## Automated Release Smoke Report (GitHub Actions)
 
-After deploying frontend and backend, run the automated smoke report workflow:
+After deploying frontend and backend, maintainers can run the release smoke report workflow from GitHub Actions or locally.
 
 1. Go to **Actions → Release smoke report → Run workflow**.
 2. Provide:
@@ -180,15 +180,18 @@ After deploying frontend and backend, run the automated smoke report workflow:
    - [ ] Backend `/api/yields` (or configured path) returns data.
    - [ ] Frontend `/` loads successfully.
    - [ ] Frontend static assets (e.g., `favicon.svg`) are reachable.
-4. Results are posted in the job summary and optionally as an issue/PR comment.
+4. Results are posted in the job summary and optionally as an issue or PR comment.
 
-**Local equivalent:**
+### Local Equivalent
 
 ```bash
 FRONTEND_URL="https://stellaryield.vercel.app" \
 BACKEND_URL="https://api.example.com" \
   node scripts/smoke-test.js --report --markdown
 ```
+
+- Portable report only: `node scripts/smoke-test.js --report --markdown`.
+- Default checks expect HTTP 200 on `BACKEND_HEALTH_PATH` (default `/api/health`), `BACKEND_YIELDS_PATH` (default `/api/yields`), frontend `/`, and `FRONTEND_ASSET_PATH` (default `/favicon.svg`). Override via workflow dispatch inputs or the same-named environment variables.
 
 ---
 
@@ -199,3 +202,14 @@ BACKEND_URL="https://api.example.com" \
 - [contract-security-checklist.md](./contract-security-checklist.md) — Security review for contracts
 - [GitHub Actions Workflows](../.github/workflows/)
 - [Vercel Deployment Settings](../README.md#vercel-deployment-settings) in README.md
+
+## Rollback Notes
+
+- If the frontend deployment is unhealthy, redeploy the last known good Vercel build from the Vercel dashboard.
+- If the backend release is unhealthy, roll back to the previous stable deployment in the hosting platform.
+- If a contract deployment is incorrect, stop frontend promotion of the new addresses and follow the contract-specific remediation plan before resuming traffic.
+
+## Documentation
+
+- Keep this checklist linked from `README.md` and `CONTRIBUTING.md`.
+- Update the checklist when deployment tooling, approval policy, or smoke-test expectations change.

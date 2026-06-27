@@ -14,6 +14,7 @@ mod test;
 
 use math::{calculate_collateral_value, calculate_cr, calculate_debt, calculate_index};
 use storage::{Cdp, DataKey, SCALAR_18};
+use storage_helpers::{extend_instance_ttl_default, extend_persistent_ttl_default};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -83,6 +84,7 @@ impl StablecoinManager {
             .instance()
             .set(&DataKey::LastUpdate, &env.ledger().timestamp());
         env.storage().instance().set(&DataKey::Initialized, &true);
+        extend_instance_ttl_default(&env);
         Ok(())
     }
 
@@ -103,15 +105,15 @@ impl StablecoinManager {
 
         Self::accrue_interest(&env)?;
 
-        let mut cdp = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Cdp(from.clone()))
-            .unwrap_or(Cdp {
-                collateral: 0,
-                debt_shares: 0,
-                last_index: SCALAR_18,
-            });
+        let cdp_key = DataKey::Cdp(from.clone());
+        let mut cdp = env.storage().persistent().get(&cdp_key).unwrap_or(Cdp {
+            collateral: 0,
+            debt_shares: 0,
+            last_index: SCALAR_18,
+        });
+        if env.storage().persistent().has(&cdp_key) {
+            extend_persistent_ttl_default(&env, &cdp_key);
+        }
 
         if collateral_amount > 0 {
             let collateral_token: Address = env
@@ -139,9 +141,8 @@ impl StablecoinManager {
         }
 
         Self::verify_cr(&env, &cdp, true)?;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Cdp(from.clone()), &cdp);
+        env.storage().persistent().set(&cdp_key, &cdp);
+        extend_persistent_ttl_default(&env, &cdp_key);
 
         env.events().publish(
             (symbol_short!("mint"), from),
@@ -166,10 +167,12 @@ impl StablecoinManager {
         from.require_auth();
         Self::accrue_interest(&env)?;
 
+        let cdp_key = DataKey::Cdp(from.clone());
+        extend_persistent_ttl_default(&env, &cdp_key);
         let mut cdp: Cdp = env
             .storage()
             .persistent()
-            .get(&DataKey::Cdp(from.clone()))
+            .get(&cdp_key)
             .ok_or(Error::NoCdpFound)?;
         let index: i128 = env
             .storage()
@@ -209,13 +212,10 @@ impl StablecoinManager {
         }
 
         if cdp.collateral == 0 && cdp.debt_shares == 0 {
-            env.storage()
-                .persistent()
-                .remove(&DataKey::Cdp(from.clone()));
+            env.storage().persistent().remove(&cdp_key);
         } else {
-            env.storage()
-                .persistent()
-                .set(&DataKey::Cdp(from.clone()), &cdp);
+            env.storage().persistent().set(&cdp_key, &cdp);
+            extend_persistent_ttl_default(&env, &cdp_key);
         }
         Ok(())
     }
@@ -230,10 +230,12 @@ impl StablecoinManager {
         liquidator.require_auth();
         Self::accrue_interest(&env)?;
 
+        let cdp_key = DataKey::Cdp(user.clone());
+        extend_persistent_ttl_default(&env, &cdp_key);
         let cdp: Cdp = env
             .storage()
             .persistent()
-            .get(&DataKey::Cdp(user.clone()))
+            .get(&cdp_key)
             .ok_or(Error::NoCdpFound)?;
         let cr = Self::get_user_cr(&env, &cdp)?;
         let mcr: u32 = env.storage().instance().get(&DataKey::Mcr).unwrap();
@@ -262,9 +264,7 @@ impl StablecoinManager {
             &cdp.collateral,
         );
 
-        env.storage()
-            .persistent()
-            .remove(&DataKey::Cdp(user.clone()));
+        env.storage().persistent().remove(&cdp_key);
         Ok(())
     }
 
@@ -272,6 +272,7 @@ impl StablecoinManager {
         if !env.storage().instance().has(&DataKey::Initialized) {
             return Err(Error::NotInitialized);
         }
+        extend_instance_ttl_default(env);
         Ok(())
     }
 
